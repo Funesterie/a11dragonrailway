@@ -32,6 +32,7 @@ type LogLoadState =
   | { kind: "ready"; payload: DragonLogSnapshot };
 
 type StreamStatus = "connecting" | "live" | "offline";
+type CockpitSection = "overview" | "guard" | "actions" | "logs" | "sources";
 
 const QUICK_ACTIONS: Record<string, string[]> = {
   qflush: ["qflush.start", "qflush.stop", "qflush.restart", "qflush.status", "qflush.rome-index"],
@@ -215,6 +216,7 @@ export function App() {
   const [actionResult, setActionResult] = useState<DragonActionExecution | null>(null);
   const [selectedLogTarget, setSelectedLogTarget] = useState<DragonLogTarget>("qflush");
   const [selectedLogSourceId, setSelectedLogSourceId] = useState<string>("");
+  const [cockpitSection, setCockpitSection] = useState<CockpitSection>("overview");
   const [dashboardStreamStatus, setDashboardStreamStatus] = useState<StreamStatus>("connecting");
   const [logStreamStatus, setLogStreamStatus] = useState<StreamStatus>("connecting");
   const apiBase = getApiBase();
@@ -530,6 +532,37 @@ export function App() {
           </article>
         </section>
 
+        <section className="panel section-panel cockpit-nav-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Vue cockpit</p>
+              <h2>Sections admin</h2>
+              <p className="section-copy">
+                Le cockpit Dragon reste une vue admin, mais on n'affiche plus tout d'un seul bloc.
+              </p>
+            </div>
+          </div>
+          <div className="cockpit-tabs">
+            {[
+              ["overview", "Overview"],
+              ["guard", "Guard"],
+              ["actions", "Actions"],
+              ["logs", "Logs"],
+              ["sources", "Sources"]
+            ].map(([key, label]) => (
+              <button
+                className={cockpitSection === key ? "quick-action-button is-active" : "quick-action-button"}
+                key={key}
+                onClick={() => setCockpitSection(key as CockpitSection)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {cockpitSection === "guard" ? (
         <section className="daemon-grid">
           <article className="panel section-panel daemon-panel">
             <div className="section-heading">
@@ -664,7 +697,9 @@ export function App() {
             </div>
           </article>
         </section>
+        ) : null}
 
+        {cockpitSection === "overview" || cockpitSection === "guard" ? (
         <section className="focus-grid">
           {focusProbes.map((probe) => (
             <article className="panel focus-card" key={probe.path}>
@@ -720,7 +755,9 @@ export function App() {
             </article>
           ))}
         </section>
+        ) : null}
 
+        {cockpitSection === "overview" ? (
         <section className="layout-grid">
           <div className="stack">
             <div className="panel section-panel">
@@ -782,172 +819,225 @@ export function App() {
               </div>
             </div>
 
+          </div>
+
+          <aside className="panel side-panel">
+            <p className="eyebrow">Lecture rapide</p>
+            <h2>Dragon pilote deja du concret.</h2>
+            <p>
+              Le cockpit ne se contente plus d'afficher une carte: il peut maintenant sonder `qflush`,
+              lire et regenerer ses artefacts Rome, lancer ses commandes de daemon, piloter `A11`,
+              relancer `Cerbere`, suivre les logs, et rejouer la timeline live des transitions.
+            </p>
+            <p className="subtle">
+              Snapshot genere le {new Date(snapshot.generatedAt).toLocaleString("fr-FR")}.
+            </p>
+          </aside>
+        </section>
+        ) : null}
+
+        {cockpitSection === "actions" ? (
+        <section className="stack">
+          <div className="panel section-panel">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Actions reelles</p>
+                <h2>Commandes allowlistees pour l'ecosysteme</h2>
+                <p className="section-copy">
+                  Dragon expose maintenant des workflows d'ops, du lifecycle service et les probes utiles.
+                </p>
+              </div>
+            </div>
+            <div className="action-groups">
+              {groupedActions.map((group) => (
+                <div className="action-group" key={group.key}>
+                  <div className="status-line">
+                    <p className="target-key">{group.label}</p>
+                    <span className="badge badge-soft">{group.items.length} actions</span>
+                  </div>
+                  <div className="actions-grid">
+                    {group.items.map((action) => (
+                      <article className="action-card" key={action.id}>
+                        <div className="source-topline">
+                          <span className="badge badge-soft">{action.target}</span>
+                          <span className={action.available ? "badge badge-ok" : "badge badge-unknown"}>
+                            {action.available ? "ready" : "missing"}
+                          </span>
+                        </div>
+                        <h3>{action.label}</h3>
+                        <p className="role">{action.description}</p>
+                        <p className="source-path">{action.path || "No source path available"}</p>
+                        <button
+                          className="action-button"
+                          disabled={!action.available || runningActionId === action.id}
+                          onClick={() => void runAction(action.id)}
+                          type="button"
+                        >
+                          {runningActionId === action.id ? "Execution..." : "Executer"}
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="result-panel">
+              <p className="eyebrow">Dernier resultat</p>
+              {actionResult ? (
+                <>
+                  <div className="source-topline">
+                    <span className="badge badge-soft">{actionResult.actionId}</span>
+                    <span className={actionResult.ok ? "badge badge-ok" : "badge badge-bad"}>
+                      {actionResult.ok ? "success" : "failed"}
+                    </span>
+                    <span className="badge badge-soft">{actionResult.target}</span>
+                  </div>
+                  <p className="role">{actionResult.detail}</p>
+                  <p className="result-meta">
+                    Cible {actionResult.target} • lance le {formatTimestamp(actionResult.ranAt)}
+                  </p>
+                  {actionResult.resolvedUrl ? <p className="source-path">{actionResult.resolvedUrl}</p> : null}
+                  {actionResult.steps?.length ? (
+                    <div className="workflow-steps">
+                      {actionResult.steps.map((step) => (
+                        <p className="workflow-step" key={`${actionResult.actionId}-${step.actionId}-${step.ranAt}`}>
+                          <span className={step.ok ? "badge badge-ok" : "badge badge-bad"}>
+                            {step.ok ? "ok" : "ko"}
+                          </span>{" "}
+                          {step.actionId} - {step.detail}
+                        </p>
+                      ))}
+                    </div>
+                  ) : null}
+                  {actionResult.stdout ? <pre>{actionResult.stdout}</pre> : null}
+                  {actionResult.stderr ? <pre>{actionResult.stderr}</pre> : null}
+                  {actionResult.data ? <pre>{JSON.stringify(actionResult.data, null, 2)}</pre> : null}
+                </>
+              ) : (
+                <p className="subtle">Aucune action executee pour le moment.</p>
+              )}
+            </div>
+          </div>
+        </section>
+        ) : null}
+
+        {cockpitSection === "logs" ? (
+        <section className="stack">
+          <div className="panel section-panel">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Logs live</p>
+                <h2>Ce qui se passe vraiment</h2>
+                <p className="section-copy">
+                  Flux SSE dedie cote API. La source selectionnee suit la cible choisie en direct.
+                </p>
+              </div>
+            </div>
+            <div className="log-toolbar">
+              <div className="log-targets">
+                <button
+                  className={selectedLogTarget === "qflush" ? "quick-action-button is-active" : "quick-action-button"}
+                  onClick={() => {
+                    setSelectedLogTarget("qflush");
+                    setSelectedLogSourceId("");
+                  }}
+                  type="button"
+                >
+                  Qflush
+                </button>
+                <button
+                  className={selectedLogTarget === "a11" ? "quick-action-button is-active" : "quick-action-button"}
+                  onClick={() => {
+                    setSelectedLogTarget("a11");
+                    setSelectedLogSourceId("");
+                  }}
+                  type="button"
+                >
+                  A11
+                </button>
+                <button
+                  className={selectedLogTarget === "cerbere" ? "quick-action-button is-active" : "quick-action-button"}
+                  onClick={() => {
+                    setSelectedLogTarget("cerbere");
+                    setSelectedLogSourceId("");
+                  }}
+                  type="button"
+                >
+                  Cerbere
+                </button>
+              </div>
+              <label className="log-select-wrap">
+                <span className="metric-label">Source</span>
+                <select
+                  className="log-select"
+                  disabled={logState.kind !== "ready" || logState.payload.sources.length === 0}
+                  onChange={(event) => setSelectedLogSourceId(event.target.value)}
+                  value={logState.kind === "ready" ? logState.payload.selectedSourceId ?? "" : ""}
+                >
+                  {(logState.kind === "ready" ? logState.payload.sources : []).map((source) => (
+                    <option disabled={!source.exists} key={source.id} value={source.id}>
+                      {source.label}
+                      {source.exists ? "" : " (missing)"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {logState.kind === "error" ? (
+              <p className="subtle">{logState.message}</p>
+            ) : logState.kind === "loading" ? (
+              <p className="subtle">Chargement des logs...</p>
+            ) : (
+              <>
+                <div className="log-meta">
+                  <span>{activeLogSource?.path || "Aucune source"}</span>
+                  <span>
+                    {activeLogSource?.lastModifiedAt
+                      ? `Maj ${formatTimestamp(activeLogSource.lastModifiedAt)}`
+                      : "Pas de date"}
+                  </span>
+                  <span>
+                    {typeof activeLogSource?.sizeBytes === "number"
+                      ? `${Math.round(activeLogSource.sizeBytes / 1024)} KB`
+                      : "tail vide"}
+                  </span>
+                  <span>{logState.payload.truncated ? "tail tronque" : "tail complet"}</span>
+                </div>
+                <pre className="log-output">
+                  {logState.payload.content || "Aucune ligne disponible pour cette source."}
+                </pre>
+              </>
+            )}
+          </div>
+        </section>
+        ) : null}
+
+        {cockpitSection === "sources" ? (
+        <section className="layout-grid">
+          <div className="stack">
             <div className="panel section-panel">
               <div className="section-heading">
                 <div>
-                  <p className="eyebrow">Actions reelles</p>
-                  <h2>Commandes allowlistees pour l'ecosysteme</h2>
+                  <p className="eyebrow">Stack cible</p>
+                  <h2>Ce que Dragon doit piloter</h2>
                   <p className="section-copy">
-                    Dragon expose maintenant des workflows d'ops, du lifecycle service et les probes utiles.
+                    Snapshot API du {formatTimestamp(state.payload.generatedAt)}. Les chemins restent visibles ici, pas dans une vue publique.
                   </p>
                 </div>
+                <button className="action-button action-button-ghost" onClick={() => void load()} type="button">
+                  Rafraichir
+                </button>
               </div>
-              <div className="action-groups">
-                {groupedActions.map((group) => (
-                  <div className="action-group" key={group.key}>
-                    <div className="status-line">
-                      <p className="target-key">{group.label}</p>
-                      <span className="badge badge-soft">{group.items.length} actions</span>
-                    </div>
-                    <div className="actions-grid">
-                      {group.items.map((action) => (
-                        <article className="action-card" key={action.id}>
-                          <div className="source-topline">
-                            <span className="badge badge-soft">{action.target}</span>
-                            <span className={action.available ? "badge badge-ok" : "badge badge-unknown"}>
-                              {action.available ? "ready" : "missing"}
-                            </span>
-                          </div>
-                          <h3>{action.label}</h3>
-                          <p className="role">{action.description}</p>
-                          <p className="source-path">{action.path || "No source path available"}</p>
-                          <button
-                            className="action-button"
-                            disabled={!action.available || runningActionId === action.id}
-                            onClick={() => void runAction(action.id)}
-                            type="button"
-                          >
-                            {runningActionId === action.id ? "Execution..." : "Executer"}
-                          </button>
-                        </article>
-                      ))}
+              <div className="target-list">
+                {Object.entries(snapshot.manifest.target_stack).map(([key, value]) => (
+                  <div className="target-row" key={key}>
+                    <div>
+                      <p className="target-key">{toTitleCase(key)}</p>
+                      <p className="target-path">{value}</p>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="result-panel">
-                <p className="eyebrow">Dernier resultat</p>
-                {actionResult ? (
-                  <>
-                    <div className="source-topline">
-                      <span className="badge badge-soft">{actionResult.actionId}</span>
-                      <span className={actionResult.ok ? "badge badge-ok" : "badge badge-bad"}>
-                        {actionResult.ok ? "success" : "failed"}
-                      </span>
-                      <span className="badge badge-soft">{actionResult.target}</span>
-                    </div>
-                    <p className="role">{actionResult.detail}</p>
-                    <p className="result-meta">
-                      Cible {actionResult.target} • lance le {formatTimestamp(actionResult.ranAt)}
-                    </p>
-                    {actionResult.resolvedUrl ? <p className="source-path">{actionResult.resolvedUrl}</p> : null}
-                    {actionResult.steps?.length ? (
-                      <div className="workflow-steps">
-                        {actionResult.steps.map((step) => (
-                          <p className="workflow-step" key={`${actionResult.actionId}-${step.actionId}-${step.ranAt}`}>
-                            <span className={step.ok ? "badge badge-ok" : "badge badge-bad"}>
-                              {step.ok ? "ok" : "ko"}
-                            </span>{" "}
-                            {step.actionId} - {step.detail}
-                          </p>
-                        ))}
-                      </div>
-                    ) : null}
-                    {actionResult.stdout ? <pre>{actionResult.stdout}</pre> : null}
-                    {actionResult.stderr ? <pre>{actionResult.stderr}</pre> : null}
-                    {actionResult.data ? <pre>{JSON.stringify(actionResult.data, null, 2)}</pre> : null}
-                  </>
-                ) : (
-                  <p className="subtle">Aucune action executee pour le moment.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="panel section-panel">
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">Logs live</p>
-                  <h2>Ce qui se passe vraiment</h2>
-                  <p className="section-copy">
-                    Flux SSE dedie cote API. La source selectionnee suit la cible choisie en direct.
-                  </p>
-                </div>
-              </div>
-              <div className="log-toolbar">
-                <div className="log-targets">
-                  <button
-                    className={selectedLogTarget === "qflush" ? "quick-action-button is-active" : "quick-action-button"}
-                    onClick={() => {
-                      setSelectedLogTarget("qflush");
-                      setSelectedLogSourceId("");
-                    }}
-                    type="button"
-                  >
-                    Qflush
-                  </button>
-                  <button
-                    className={selectedLogTarget === "a11" ? "quick-action-button is-active" : "quick-action-button"}
-                    onClick={() => {
-                      setSelectedLogTarget("a11");
-                      setSelectedLogSourceId("");
-                    }}
-                    type="button"
-                  >
-                    A11
-                  </button>
-                  <button
-                    className={selectedLogTarget === "cerbere" ? "quick-action-button is-active" : "quick-action-button"}
-                    onClick={() => {
-                      setSelectedLogTarget("cerbere");
-                      setSelectedLogSourceId("");
-                    }}
-                    type="button"
-                  >
-                    Cerbere
-                  </button>
-                </div>
-                <label className="log-select-wrap">
-                  <span className="metric-label">Source</span>
-                  <select
-                    className="log-select"
-                    disabled={logState.kind !== "ready" || logState.payload.sources.length === 0}
-                    onChange={(event) => setSelectedLogSourceId(event.target.value)}
-                    value={logState.kind === "ready" ? logState.payload.selectedSourceId ?? "" : ""}
-                  >
-                    {(logState.kind === "ready" ? logState.payload.sources : []).map((source) => (
-                      <option disabled={!source.exists} key={source.id} value={source.id}>
-                        {source.label}
-                        {source.exists ? "" : " (missing)"}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              {logState.kind === "error" ? (
-                <p className="subtle">{logState.message}</p>
-              ) : logState.kind === "loading" ? (
-                <p className="subtle">Chargement des logs...</p>
-              ) : (
-                <>
-                  <div className="log-meta">
-                    <span>{activeLogSource?.path || "Aucune source"}</span>
-                    <span>
-                      {activeLogSource?.lastModifiedAt
-                        ? `Maj ${formatTimestamp(activeLogSource.lastModifiedAt)}`
-                        : "Pas de date"}
-                    </span>
-                    <span>
-                      {typeof activeLogSource?.sizeBytes === "number"
-                        ? `${Math.round(activeLogSource.sizeBytes / 1024)} KB`
-                        : "tail vide"}
-                    </span>
-                    <span>{logState.payload.truncated ? "tail tronque" : "tail complet"}</span>
-                  </div>
-                  <pre className="log-output">
-                    {logState.payload.content || "Aucune ligne disponible pour cette source."}
-                  </pre>
-                </>
-              )}
             </div>
 
             <div className="panel section-panel">
@@ -986,22 +1076,22 @@ export function App() {
           </div>
 
           <aside className="panel side-panel">
-            <p className="eyebrow">Lecture rapide</p>
-            <h2>Dragon pilote deja du concret.</h2>
+            <p className="eyebrow">Inventaire</p>
+            <h2>La vue infra reste separee.</h2>
             <p>
-              Le cockpit ne se contente plus d'afficher une carte: il peut maintenant sonder `qflush`,
-              lire et regenerer ses artefacts Rome, lancer ses commandes de daemon, piloter `A11`,
-              relancer `Cerbere`, suivre les logs, et rejouer la timeline live des transitions.
+              Cette section regroupe les chemins, probes et détails de runtime qui n'ont rien à faire dans une interface utilisateur normale.
             </p>
             <p className="subtle">
               Snapshot genere le {new Date(snapshot.generatedAt).toLocaleString("fr-FR")}.
             </p>
           </aside>
         </section>
+        ) : null}
       </>
     );
   }, [
     actionResult,
+    cockpitSection,
     daemonBusy,
     dashboardStreamStatus,
     logState,

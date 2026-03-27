@@ -173,6 +173,16 @@ body {
   gap: 1rem;
 }
 
+.cockpit-nav-panel {
+  margin-top: 1rem;
+}
+
+.cockpit-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
 .section-panel,
 .side-panel,
 .status-panel {
