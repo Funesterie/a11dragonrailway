@@ -1,0 +1,26 @@
+{
+  "name": "dragon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.6.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build:packages": "npm --workspace @dragon/contracts run build && npm --workspace @dragon/upstream run build",
+    "build": "npm run build:packages && npm --workspace @dragon/daemon run build && npm --workspace @dragon/api run build && npm --workspace @dragon/web run build",
+    "typecheck": "npm run build:packages && npm --workspace @dragon/daemon run typecheck && npm --workspace @dragon/api run typecheck && npm --workspace @dragon/web run typecheck",
+    "dev": "npm run build:packages && concurrently --kill-others-on-fail -n daemon,api,web -c blue,cyan,green \"npm --workspace @dragon/daemon run dev\" \"npm --workspace @dragon/api run dev\" \"npm --workspace @dragon/web run dev\"",
+    "start:daemon": "npm --workspace @dragon/daemon run start",
+    "start:api": "npm --workspace @dragon/api run start",
+    "start:web": "npm --workspace @dragon/web run dev"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
