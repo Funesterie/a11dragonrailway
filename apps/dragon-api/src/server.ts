@@ -35,6 +35,7 @@ const port = Number(process.env.PORT ?? process.env.DRAGON_API_PORT ?? 4600);
 const MAX_TIMELINE_ENTRIES = 60;
 const DASHBOARD_STREAM_PULSE_MS = 5000;
 const LOG_STREAM_PULSE_MS = 2500;
+const FLOW_PROXY_TIMEOUT_MS = 60_000;
 
 interface IntegrationPayload {
   generatedAt: string;
@@ -54,6 +55,12 @@ interface LogStreamClient {
   target: DragonLogTarget;
   sourceId?: string;
   timer: NodeJS.Timeout;
+}
+
+interface FlowRunRequestBody {
+  flow?: unknown;
+  payload?: unknown;
+  admin?: unknown;
 }
 
 type TimelineEntryInput = Omit<DragonTimelineEntry, "id" | "ts"> & {
@@ -91,6 +98,156 @@ function buildSnapshotSignature(snapshot: DragonSystemSnapshot): string {
 
 function parseLogTarget(value: unknown): DragonLogTarget {
   return value === "a11" || value === "cerbere" ? value : "qflush";
+}
+
+function normalizeBaseUrl(value: unknown): string | undefined {
+  const normalized = String(value || "").trim().replace(/\/+$/, "");
+  return normalized || undefined;
+}
+
+function baseUrlFromHealthUrl(healthUrl: unknown): string | undefined {
+  const normalized = String(healthUrl || "").trim();
+  if (!normalized) {
+    return undefined;
+  }
+  return normalized.replace(/\/health$/, "").replace(/\/+$/, "") || undefined;
+}
+
+function extractBearerToken(value: string | undefined): string | undefined {
+  const match = String(value || "").match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || undefined;
+}
+
+function getCompatInboundTokens(req: Request): string[] {
+  return [
+    extractBearerToken(req.header("authorization") || undefined),
+    req.header("x-qflush-token") || undefined,
+    req.header("x-dragon-token") || undefined,
+    req.header("x-nez-token") || undefined
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+}
+
+function getCompatExpectedTokens(): string[] {
+  return [
+    process.env.DRAGON_API_TOKEN,
+    process.env.NEZ_ADMIN_TOKEN,
+    process.env.QFLUSH_TOKEN,
+    process.env.NPZ_ADMIN_TOKEN
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index);
+}
+
+function isCompatAuthorized(req: Request): boolean {
+  const expectedTokens = getCompatExpectedTokens();
+  if (!expectedTokens.length) {
+    return true;
+  }
+
+  const inboundTokens = getCompatInboundTokens(req);
+  return inboundTokens.some((token) => expectedTokens.includes(token));
+}
+
+function buildCompatProxyHeaders(): Record<string, string> {
+  const token = String(
+    process.env.QFLUSH_TOKEN ||
+    process.env.NEZ_ADMIN_TOKEN ||
+    process.env.NPZ_ADMIN_TOKEN ||
+    ""
+  ).trim();
+
+  if (!token) {
+    return {};
+  }
+
+  return {
+    Authorization: `Bearer ${token}`,
+    "x-qflush-token": token
+  };
+}
+
+async function resolveCompatQflushBaseUrl(manifestPath: string): Promise<string | undefined> {
+  const explicitBaseUrl =
+    normalizeBaseUrl(process.env.QFLUSH_BASE_URL) ||
+    normalizeBaseUrl(baseUrlFromHealthUrl(process.env.QFLUSH_HEALTH_URL));
+
+  if (explicitBaseUrl) {
+    return explicitBaseUrl;
+  }
+
+  const snapshot = await buildSystemSnapshot(manifestPath);
+  const qflushProbe = snapshot.upstreams.find((probe) => probe.name === "qflush");
+  return normalizeBaseUrl(baseUrlFromHealthUrl(qflushProbe?.healthUrl));
+}
+
+async function forwardCompatFlowRun(
+  flow: string,
+  payload: unknown,
+  manifestPath: string
+): Promise<{ status: number; body: unknown; resolvedUrl?: string }> {
+  const qflushBaseUrl = await resolveCompatQflushBaseUrl(manifestPath);
+  if (!qflushBaseUrl) {
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        error: "qflush_unavailable",
+        message: "Dragon ne trouve pas de base URL Qflush pour relayer ce flow."
+      }
+    };
+  }
+
+  const resolvedUrl = `${qflushBaseUrl}/api/admin/run`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FLOW_PROXY_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(resolvedUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...buildCompatProxyHeaders()
+      },
+      body: JSON.stringify({ flow, payload: payload ?? {} })
+    });
+
+    const rawText = await response.text();
+    let parsed: unknown = rawText;
+
+    try {
+      parsed = rawText ? JSON.parse(rawText) : {};
+    } catch {
+      parsed = rawText;
+    }
+
+    return {
+      status: response.status,
+      resolvedUrl,
+      body:
+        parsed && typeof parsed === "object"
+          ? parsed
+          : {
+              ok: response.ok,
+              raw: parsed
+            }
+    };
+  } catch (error) {
+    return {
+      status: 502,
+      resolvedUrl,
+      body: {
+        ok: false,
+        error: "compat_flow_proxy_failed",
+        message: error instanceof Error ? error.message : String(error)
+      }
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function describeProbeRuntime(probe?: UpstreamProbe): string {
@@ -331,6 +488,43 @@ async function main(): Promise<void> {
       manifestPath,
       timestamp: new Date().toISOString()
     });
+  });
+
+  app.post("/api/admin/run", async (req, res, next) => {
+    try {
+      if (!isCompatAuthorized(req)) {
+        return res.status(403).json({
+          ok: false,
+          error: "admin_required",
+          message: "Dragon compat route requires a valid admin token."
+        });
+      }
+
+      const body = (req.body || {}) as FlowRunRequestBody;
+      const flow = String(body.flow || "").trim();
+      if (!flow) {
+        return res.status(400).json({
+          ok: false,
+          error: "missing_flow",
+          message: 'Champ "flow" requis.'
+        });
+      }
+
+      const proxied = await forwardCompatFlowRun(flow, body.payload ?? {}, manifestPath);
+
+      recordTimelineEntry({
+        kind: "action",
+        level: proxied.status < 400 ? "success" : "warning",
+        title: proxied.status < 400 ? "Compat flow execute" : "Compat flow en echec",
+        detail: `${flow} -> ${proxied.resolvedUrl || "qflush indisponible"} • HTTP ${proxied.status}`,
+        target: "qflush",
+        actionId: flow
+      });
+
+      return res.status(proxied.status).json(proxied.body);
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get("/api/manifest", async (_req, res, next) => {
