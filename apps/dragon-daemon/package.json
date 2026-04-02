@@ -20,12 +20,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jEFFLEZ/dragon.git"
+    "url": "https://github.com/jEFFLEZ/a11dragonrailway.git"
   },
   "bugs": {
-    "url": "https://github.com/jEFFLEZ/dragon/issues"
+    "url": "https://github.com/jEFFLEZ/a11dragonrailway/issues"
   },
-  "homepage": "https://github.com/jEFFLEZ/dragon#readme",
+  "homepage": "https://github.com/jEFFLEZ/a11dragonrailway#readme",
   "engines": {
     "node": ">=20"
   },

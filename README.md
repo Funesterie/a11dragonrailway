@@ -45,5 +45,5 @@ npm run publish:dragon
 
 ## Notes
 
-`D:\dragon` is the canonical source.
-`D:\funesterie\a11\a11dragonrailway` is intended to be a clean deployment mirror of this same repo, not a second codebase.
+`D:\funesterie\a11\a11dragonrailway` is the canonical source for the Dragon workspace.
+The GitHub repository for this workspace is `https://github.com/jEFFLEZ/a11dragonrailway`.
