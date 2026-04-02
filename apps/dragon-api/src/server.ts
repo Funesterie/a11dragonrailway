@@ -30,6 +30,7 @@ import {
   resolveDragonManifestPath,
   runDragonDaemonCycle
 } from "@funeste38/dragon-upstream";
+import { runDragonEphemeralMemoryFlow } from "./compat-memory.js";
 
 const port = Number(process.env.PORT ?? process.env.DRAGON_API_PORT ?? 4600);
 const MAX_TIMELINE_ENTRIES = 60;
@@ -61,6 +62,13 @@ interface FlowRunRequestBody {
   flow?: unknown;
   payload?: unknown;
   admin?: unknown;
+}
+
+interface CompatFlowDispatchResult {
+  status: number;
+  body: unknown;
+  resolvedUrl?: string;
+  target?: "dragon" | "qflush" | "a11" | "cerbere";
 }
 
 type TimelineEntryInput = Omit<DragonTimelineEntry, "id" | "ts"> & {
@@ -151,68 +159,66 @@ function isCompatAuthorized(req: Request): boolean {
   return inboundTokens.some((token) => expectedTokens.includes(token));
 }
 
-function buildCompatProxyHeaders(): Record<string, string> {
-  const token = String(
-    process.env.QFLUSH_TOKEN ||
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function getCompatOutboundToken(): string {
+  return String(
     process.env.NEZ_ADMIN_TOKEN ||
+    process.env.DRAGON_API_TOKEN ||
+    process.env.QFLUSH_TOKEN ||
     process.env.NPZ_ADMIN_TOKEN ||
     ""
   ).trim();
+}
 
+function buildCompatA11Headers(): Record<string, string> {
+  const token = getCompatOutboundToken();
   if (!token) {
     return {};
   }
 
   return {
     Authorization: `Bearer ${token}`,
+    "x-nez-admin": token,
+    "x-dragon-token": token,
     "x-qflush-token": token
   };
 }
 
-async function resolveCompatQflushBaseUrl(manifestPath: string): Promise<string | undefined> {
+async function resolveCompatA11BaseUrl(manifestPath: string): Promise<string | undefined> {
   const explicitBaseUrl =
-    normalizeBaseUrl(process.env.QFLUSH_BASE_URL) ||
-    normalizeBaseUrl(baseUrlFromHealthUrl(process.env.QFLUSH_HEALTH_URL));
+    normalizeBaseUrl(process.env.A11_API_BASE_URL) ||
+    normalizeBaseUrl(baseUrlFromHealthUrl(process.env.A11_API_HEALTH_URL));
 
   if (explicitBaseUrl) {
     return explicitBaseUrl;
   }
 
   const snapshot = await buildSystemSnapshot(manifestPath);
-  const qflushProbe = snapshot.upstreams.find((probe) => probe.name === "qflush");
-  return normalizeBaseUrl(baseUrlFromHealthUrl(qflushProbe?.healthUrl));
+  const a11Probe = snapshot.upstreams.find(
+    (probe) => String(probe.name || "").trim().toLowerCase() === "a11"
+  );
+  return normalizeBaseUrl(baseUrlFromHealthUrl(a11Probe?.healthUrl));
 }
 
-async function forwardCompatFlowRun(
-  flow: string,
-  payload: unknown,
-  manifestPath: string
-): Promise<{ status: number; body: unknown; resolvedUrl?: string }> {
-  const qflushBaseUrl = await resolveCompatQflushBaseUrl(manifestPath);
-  if (!qflushBaseUrl) {
-    return {
-      status: 502,
-      body: {
-        ok: false,
-        error: "qflush_unavailable",
-        message: "Dragon ne trouve pas de base URL Qflush pour relayer ce flow."
-      }
-    };
-  }
-
-  const resolvedUrl = `${qflushBaseUrl}/api/admin/run`;
+async function postCompatJson(
+  url: string,
+  body: unknown
+): Promise<{ status: number; body: unknown; resolvedUrl: string }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FLOW_PROXY_TIMEOUT_MS);
 
   try {
-    const response = await fetch(resolvedUrl, {
+    const response = await fetch(url, {
       method: "POST",
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        ...buildCompatProxyHeaders()
+        ...buildCompatA11Headers()
       },
-      body: JSON.stringify({ flow, payload: payload ?? {} })
+      body: JSON.stringify(body ?? {})
     });
 
     const rawText = await response.text();
@@ -226,7 +232,7 @@ async function forwardCompatFlowRun(
 
     return {
       status: response.status,
-      resolvedUrl,
+      resolvedUrl: url,
       body:
         parsed && typeof parsed === "object"
           ? parsed
@@ -238,7 +244,7 @@ async function forwardCompatFlowRun(
   } catch (error) {
     return {
       status: 502,
-      resolvedUrl,
+      resolvedUrl: url,
       body: {
         ok: false,
         error: "compat_flow_proxy_failed",
@@ -247,6 +253,141 @@ async function forwardCompatFlowRun(
     };
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+function buildCompatChatRequestBody(payload: unknown): Record<string, unknown> {
+  const payloadRecord = isRecord(payload) ? payload : {};
+  const requestBody = isRecord(payloadRecord.request) ? { ...payloadRecord.request } : {};
+
+  if (Array.isArray(payloadRecord.messages) && payloadRecord.messages.length > 0) {
+    requestBody.messages = payloadRecord.messages;
+  } else if (!Array.isArray(requestBody.messages) || requestBody.messages.length === 0) {
+    const synthesizedMessages: Array<Record<string, unknown>> = [];
+    const systemPrompt = String(payloadRecord.systemPrompt || requestBody.systemPrompt || "").trim();
+    const userInput = String(
+      payloadRecord.prompt ||
+      payloadRecord.input ||
+      requestBody.prompt ||
+      requestBody.input ||
+      ""
+    ).trim();
+
+    if (systemPrompt) {
+      synthesizedMessages.push({
+        role: "system",
+        content: systemPrompt
+      });
+    }
+
+    if (userInput) {
+      synthesizedMessages.push({
+        role: "user",
+        content: userInput
+      });
+    }
+
+    if (synthesizedMessages.length > 0) {
+      requestBody.messages = synthesizedMessages;
+    }
+  }
+
+  if (!requestBody.model && payloadRecord.model) {
+    requestBody.model = payloadRecord.model;
+  }
+
+  if (!requestBody.prompt && payloadRecord.prompt) {
+    requestBody.prompt = payloadRecord.prompt;
+  }
+
+  requestBody.a11SkipQflush = true;
+  requestBody.dragonCompat = true;
+
+  if (String(requestBody.provider || "").trim().toLowerCase() === "qflush") {
+    requestBody.provider = "openai";
+  }
+
+  return requestBody;
+}
+
+async function runCompatA11ChatFlow(
+  payload: unknown,
+  manifestPath: string
+): Promise<CompatFlowDispatchResult> {
+  const a11BaseUrl = await resolveCompatA11BaseUrl(manifestPath);
+  if (!a11BaseUrl) {
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        error: "a11_unavailable",
+        message: "Dragon ne trouve pas de base URL A11 pour executer le chat."
+      },
+      target: "a11"
+    };
+  }
+
+  return {
+    ...(await postCompatJson(
+      `${a11BaseUrl}/api/admin/dragon/chat-completions`,
+      buildCompatChatRequestBody(payload)
+    )),
+    target: "a11"
+  };
+}
+
+async function runCompatA11MemorySummaryFlow(
+  payload: unknown,
+  manifestPath: string
+): Promise<CompatFlowDispatchResult> {
+  const a11BaseUrl = await resolveCompatA11BaseUrl(manifestPath);
+  if (!a11BaseUrl) {
+    return {
+      status: 502,
+      body: {
+        ok: false,
+        error: "a11_unavailable",
+        message: "Dragon ne trouve pas de base URL A11 pour executer le resume memoire."
+      },
+      target: "a11"
+    };
+  }
+
+  return {
+    ...(await postCompatJson(
+      `${a11BaseUrl}/api/admin/dragon/memory-summary`,
+      isRecord(payload) ? payload : {}
+    )),
+    target: "a11"
+  };
+}
+
+async function dispatchCompatFlowRun(
+  flow: string,
+  payload: unknown,
+  manifestPath: string,
+  ephemeralStorePath: string
+): Promise<CompatFlowDispatchResult> {
+  switch (String(flow || "").trim()) {
+    case "a11.chat.v1":
+      return runCompatA11ChatFlow(payload, manifestPath);
+    case "a11.memory.summary.v1":
+      return runCompatA11MemorySummaryFlow(payload, manifestPath);
+    case "a11.memory.ephemeral.v1":
+      return {
+        ...(await runDragonEphemeralMemoryFlow(ephemeralStorePath, payload)),
+        target: "dragon"
+      };
+    default:
+      return {
+        status: 404,
+        body: {
+          ok: false,
+          error: "unsupported_flow",
+          message: `Flow non supporte par Dragon: ${flow}`
+        },
+        target: "dragon"
+      };
   }
 }
 
@@ -350,6 +491,7 @@ async function main(): Promise<void> {
   const apiRuntimeDir = path.join(path.dirname(manifestPath), ".dragon", "runtime", "api");
   const timelineStatePath = path.join(apiRuntimeDir, "timeline.json");
   const integrationStatePath = path.join(apiRuntimeDir, "integration.json");
+  const ephemeralMemoryStatePath = path.join(apiRuntimeDir, "ephemeral-memory.json");
   const app = express();
   const dashboardClients = new Map<string, DashboardStreamClient>();
   const logClients = new Map<string, LogStreamClient>();
@@ -510,14 +652,19 @@ async function main(): Promise<void> {
         });
       }
 
-      const proxied = await forwardCompatFlowRun(flow, body.payload ?? {}, manifestPath);
+      const proxied = await dispatchCompatFlowRun(
+        flow,
+        body.payload ?? {},
+        manifestPath,
+        ephemeralMemoryStatePath
+      );
 
       recordTimelineEntry({
         kind: "action",
         level: proxied.status < 400 ? "success" : "warning",
         title: proxied.status < 400 ? "Compat flow execute" : "Compat flow en echec",
-        detail: `${flow} -> ${proxied.resolvedUrl || "qflush indisponible"} • HTTP ${proxied.status}`,
-        target: "qflush",
+        detail: `${flow} -> ${proxied.resolvedUrl || "dragon-native"} • HTTP ${proxied.status}`,
+        target: proxied.target || "dragon",
         actionId: flow
       });
 
