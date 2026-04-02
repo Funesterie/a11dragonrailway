@@ -1,7 +1,7 @@
 # Dragon Giga App Analysis
 
 Date: 2026-03-26
-Workspace: `D:\dragon`
+Workspace: `D:\funesterie\a11\a11dragonrailway`
 Scope reviewed: `D:\`
 
 ## Executive summary
@@ -124,7 +124,7 @@ Dragon can therefore target:
 ## Recommended Dragon architecture
 
 Do not start with a giant file copy.
-Start with a modular umbrella repo in `D:\dragon`.
+Start with a modular umbrella repo in `D:\funesterie\a11\a11dragonrailway`.
 
 Suggested target shape:
 
@@ -185,7 +185,7 @@ dragon/
 
 Phase 1 should build a working Dragon shell without deep rewrites:
 
-1. Create a Dragon workspace in `D:\dragon`.
+1. Create a Dragon workspace in `D:\funesterie\a11\a11dragonrailway`.
 2. Define adapters for QFlush, A11 backend, and A11 frontend.
 3. Normalize config via Envaptex.
 4. Expose one unified API surface:
