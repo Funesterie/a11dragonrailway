@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-03-26",
+  "generated_at": "2026-04-02",
   "workspace": "D:\\dragon",
   "scope": "D:\\",
   "canonical_sources": [
@@ -78,14 +78,15 @@
     "D:\\tmp-a11frontend-deploy-20260324"
   ],
   "deployment_wrappers": [
-    "D:\\funesterie\\a11\\a11qflushrailway",
+    "D:\\funesterie\\a11\\a11dragonrailway",
     "D:\\funesterie\\a11\\a11backendrailway",
     "D:\\funesterie\\a11\\a11frontendnetlify"
   ],
   "target_stack": {
-    "dragon_daemon": "D:\\qflush",
-    "dragon_api": "D:\\a11ba\\apps\\server",
-    "dragon_web": "D:\\a11frontend\\apps\\web",
+    "dragon_repo": "D:\\dragon",
+    "dragon_daemon": "D:\\dragon\\apps\\dragon-daemon",
+    "dragon_api": "D:\\dragon\\apps\\dragon-api",
+    "dragon_web": "D:\\dragon\\apps\\dragon-web",
     "dragon_mcp": "D:\\a11-mcp-server",
     "dragon_feature_reference": "D:\\A11"
   }

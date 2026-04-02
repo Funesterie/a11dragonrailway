@@ -7,7 +7,7 @@ import express, {
 import type {
   DragonDaemonPolicyPatch,
   DragonDaemonStatus
-} from "@dragon/contracts";
+} from "@funeste38/dragon-contracts";
 
 import {
   buildSystemSnapshot,
@@ -17,9 +17,9 @@ import {
   patchDragonDaemonPolicy,
   resolveDragonManifestPath,
   runDragonDaemonCycle
-} from "@dragon/upstream";
+} from "@funeste38/dragon-upstream";
 
-const port = Number(process.env.DRAGON_DAEMON_PORT ?? 4700);
+const port = Number(process.env.PORT ?? process.env.DRAGON_DAEMON_PORT ?? 4700);
 
 const intents = [
   {

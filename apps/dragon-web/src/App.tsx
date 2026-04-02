@@ -12,7 +12,7 @@ import type {
   DragonTimelineEntry,
   DragonTimelineSnapshot,
   UpstreamProbe
-} from "@dragon/contracts";
+} from "@funeste38/dragon-contracts";
 
 interface IntegrationPayload {
   generatedAt: string;

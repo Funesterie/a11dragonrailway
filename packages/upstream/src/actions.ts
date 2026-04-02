@@ -9,7 +9,7 @@ import type {
   DragonManifest,
   HealthState,
   UpstreamProbe
-} from "@dragon/contracts";
+} from "@funeste38/dragon-contracts";
 
 import {
   A11_PORT,

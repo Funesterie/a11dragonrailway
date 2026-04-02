@@ -1,8 +1,9 @@
 {
-  "name": "@dragon/web",
-  "version": "0.1.0",
+  "name": "@funeste38/dragon-web",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
+  "description": "Dragon web cockpit for runtime supervision and orchestration.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -10,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@dragon/contracts": "file:../../packages/contracts",
+    "@funeste38/dragon-contracts": "^0.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

@@ -1,21 +1,18 @@
 # Dragon
 
-Dragon is the umbrella workspace that converges the strongest pieces already present on `D:\`:
+Dragon is the canonical Funesterie control-plane workspace.
 
-- `qflush` as the control plane
-- `A11` as the multimodal feature reference
-- `a11ba` and `a11frontend` as cleaner extraction candidates
-- Funesterie libraries as reusable platform modules
+It keeps the ecosystem map that points toward `qflush`, `A11`, `a11ba`, `a11frontend` and the shared Funesterie libraries, while giving us one clean source root for the daemon, the API cockpit and the web cockpit.
 
 ## Workspace
 
-- `apps/dragon-daemon` control-plane oriented service
-- `apps/dragon-api` product-facing API shell
-- `apps/dragon-web` React cockpit
-- `packages/contracts` shared types
-- `packages/upstream` manifest loading and local ecosystem probing
+- `apps/dragon-daemon`: published as `@funeste38/dragon`
+- `apps/dragon-api`: Railway-ready API shell
+- `apps/dragon-web`: Netlify-ready React cockpit
+- `packages/contracts`: published as `@funeste38/dragon-contracts`
+- `packages/upstream`: published as `@funeste38/dragon-upstream`
 
-## Scripts
+## Local Commands
 
 ```bash
 npm install
@@ -24,7 +21,23 @@ npm run build
 npm run typecheck
 ```
 
-## Default ports
+## Deployment
+
+- Netlify: root config in `netlify.toml`, publishing `apps/dragon-web/dist`
+- Railway: root config in `railway.toml` and `Dockerfile`
+- Railway runtime mode:
+  set `DRAGON_SERVICE=api` for `dragon-api`
+  set `DRAGON_SERVICE=daemon` for `dragon-daemon`
+
+## npm Releases
+
+```bash
+npm run publish:contracts
+npm run publish:upstream
+npm run publish:dragon
+```
+
+## Default Ports
 
 - `dragon-api`: `4600`
 - `dragon-daemon`: `4700`
@@ -32,5 +45,5 @@ npm run typecheck
 
 ## Notes
 
-This phase intentionally wraps upstream projects instead of copying their business logic.
-The goal is to create a stable Dragon shell first, then promote validated slices from `qflush`, `A11`, `a11ba`, and `a11frontend`.
+`D:\dragon` is the canonical source.
+`D:\funesterie\a11\a11dragonrailway` is intended to be a clean deployment mirror of this same repo, not a second codebase.

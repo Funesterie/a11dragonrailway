@@ -17,7 +17,7 @@ import type {
   DragonTimelineLevel,
   DragonTimelineSnapshot,
   UpstreamProbe
-} from "@dragon/contracts";
+} from "@funeste38/dragon-contracts";
 
 import {
   buildSystemSnapshot,
@@ -29,9 +29,9 @@ import {
   readIntegrationLogs,
   resolveDragonManifestPath,
   runDragonDaemonCycle
-} from "@dragon/upstream";
+} from "@funeste38/dragon-upstream";
 
-const port = Number(process.env.DRAGON_API_PORT ?? 4600);
+const port = Number(process.env.PORT ?? process.env.DRAGON_API_PORT ?? 4600);
 const MAX_TIMELINE_ENTRIES = 60;
 const DASHBOARD_STREAM_PULSE_MS = 5000;
 const LOG_STREAM_PULSE_MS = 2500;
