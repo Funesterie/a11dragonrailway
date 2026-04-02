@@ -28,12 +28,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jEFFLEZ/a11dragonrailway.git"
+    "url": "https://github.com/Funesterie/a11dragonrailway.git"
   },
   "bugs": {
-    "url": "https://github.com/jEFFLEZ/a11dragonrailway/issues"
+    "url": "https://github.com/Funesterie/a11dragonrailway/issues"
   },
-  "homepage": "https://github.com/jEFFLEZ/a11dragonrailway#readme",
+  "homepage": "https://github.com/Funesterie/a11dragonrailway#readme",
   "devDependencies": {
     "@types/node": "^24.10.1",
     "concurrently": "^9.2.1",
