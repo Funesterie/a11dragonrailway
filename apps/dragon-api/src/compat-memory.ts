@@ -128,7 +128,7 @@ export async function runDragonEphemeralMemoryFlow(
   rawPayload: unknown
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const payload = isRecord(rawPayload) ? rawPayload : {};
-  const op = String(payload.op || "status").trim().toLowerCase();
+  const op = String(payload.op ?? payload.operation ?? "status").trim().toLowerCase();
   const namespace = normalizeNamespace(payload);
   const scope = normalizeScope(payload);
   const key = normalizeKey(payload);
